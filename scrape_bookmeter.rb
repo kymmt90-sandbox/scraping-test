@@ -36,11 +36,10 @@ books = []
 book_page_urls.each do |url|
   book_page = agent.get(ROOT_URL + url)
 
-  name  = book_page.search('h1').first.text
-  year  = book_page.search('select#read_date_y > option').first.attribute('value').text
-  month = book_page.search('select#read_date_m > option').first.attribute('value').text
-  day   = book_page.search('select#read_date_d > option').first.attribute('value').text
-  date  = [year.to_s, month.to_s, day.to_s].join('/')
+  name = book_page.search('h1').first.text
+  date = %w|y m d|.map do |symbol|
+    book_page.search("select#read_date_#{symbol} > option").first.attribute('value').text
+  end.join('/')
 
   books << Book.new(name, date)
 end
