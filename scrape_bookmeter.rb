@@ -30,18 +30,19 @@ agent.get(BOOKLIST_URL).search('div.book_box_book_title > a').each do |node|
   book_page_urls << node.attribute('href').text
 end
 
-names = []
-dates = []
+Book = Struct.new(:name, :completion_date)
+
+books = []
 book_page_urls.each do |url|
   book_page = agent.get(ROOT_URL + url)
+
   name  = book_page.search('h1').first.text
   year  = book_page.search('select#read_date_y > option').first.attribute('value').text
   month = book_page.search('select#read_date_m > option').first.attribute('value').text
   day   = book_page.search('select#read_date_d > option').first.attribute('value').text
-  names << name
-  dates << [year.to_s, month.to_s, day.to_s].join('/')
+  date  = [year.to_s, month.to_s, day.to_s].join('/')
+
+  books << Book.new(name, date)
 end
 
-names.zip(dates) do |name_date|
-  p name_date
-end
+books.each { |book| puts "#{book[:name]}: #{book[:completion_date]}" }
