@@ -1,5 +1,4 @@
 require 'mechanize'
-require 'nokogiri'
 
 ROOT_URL   = 'http://bookmeter.com'
 USER_ID    = '104835'
@@ -26,25 +25,23 @@ agent.get(LOGIN_URL) do |page|
   end.submit
 end
 
-booklist_content = agent.get(BOOKLIST_URL).content.toutf8
-booklist_doc = Nokogiri::HTML(booklist_content)
 book_page_urls = []
-book_names = []
-booklist_doc.css('div.book_box_book_title > a').each do |node|
+agent.get(BOOKLIST_URL).search('div.book_box_book_title > a').each do |node|
   book_page_urls << node.attribute('href').text
-  book_names << node.text
 end
 
+names = []
 dates = []
 book_page_urls.each do |url|
-  book_content = agent.get(ROOT_URL + url).content.toutf8
-  book_doc = Nokogiri::HTML(book_content)
-  year  = book_doc.at_css('select#read_date_y > option').attribute('value').text
-  month = book_doc.at_css('select#read_date_m > option').attribute('value').text
-  day   = book_doc.at_css('select#read_date_d > option').attribute('value').text
+  book_page = agent.get(ROOT_URL + url)
+  name  = book_page.search('h1').first.text
+  year  = book_page.search('select#read_date_y > option').first.attribute('value').text
+  month = book_page.search('select#read_date_m > option').first.attribute('value').text
+  day   = book_page.search('select#read_date_d > option').first.attribute('value').text
+  names << name
   dates << [year.to_s, month.to_s, day.to_s].join('/')
 end
 
-book_names.zip(dates) do |name_date|
+names.zip(dates) do |name_date|
   p name_date
 end
