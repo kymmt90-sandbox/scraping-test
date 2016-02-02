@@ -25,6 +25,8 @@ GEM
       unf_ext
     unf_ext (0.0.7.1)
     webrobots (0.1.2)
+    yasuri (0.0.11)
+      mechanize
 
 PLATFORMS
   ruby
@@ -32,6 +34,7 @@ PLATFORMS
 DEPENDENCIES
   mechanize
   nokogiri
+  yasuri
 
 BUNDLED WITH
    1.10.6
