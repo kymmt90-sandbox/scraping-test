@@ -28,7 +28,9 @@ end
 # 読んだ本リスト 1 ページ目に載っているすべての本情報への URL 取得
 booklist_root = Yasuri.links_root '//*[@id="main_left"]/div//div[@class="book book_box_inline_3r"]/div[2]/a' do
   text_name '//*[@id="title"]'
+  text_readers_count '//*[@id="side_left"]/div[1]/div/div[2]/div[3]/div/span', truncate: /^\d+/, proc: :to_i
 end
 
+require 'json'
 booklist_page = agent.get(BOOKLIST_URL)
-p booklist_root.inject(agent, booklist_page)
+jj booklist_root.inject(agent, booklist_page)
