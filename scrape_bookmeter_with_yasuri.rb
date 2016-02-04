@@ -25,12 +25,16 @@ agent.get(LOGIN_URL) do |page|
   end.submit
 end
 
-# 読んだ本リスト 1 ページ目に載っているすべての本情報への URL 取得
-booklist_root = Yasuri.links_root '//*[@id="main_left"]/div//div[@class="book book_box_inline_3r"]/div[2]/a' do
-  text_name '//*[@id="title"]'
-  text_readers_count '//*[@id="side_left"]/div[1]/div/div[2]/div[3]/div/span', truncate: /^\d+/, proc: :to_i
+# 読んだ本リストに載っているすべての本情報の名前と URL 取得
+BOOKLIST_NEXT_PAGE_XPATH = '//span[@class="now_page"]/following-sibling::span[1]/a'
+root = Yasuri.pages_root BOOKLIST_NEXT_PAGE_XPATH do
+  text_page_index '//span[@class="now_page"]/a'
+  2.upto(25) do |i|
+    eval "text_book_#{i}_name \"//*[@id=\\\"main_left\\\"]/div/div[#{i}]/div[2]/a\""
+    eval "text_book_#{i}_link \"//*[@id=\\\"main_left\\\"]/div/div[#{i}]/div[2]/a/@href\""
+  end
 end
 
 require 'json'
 booklist_page = agent.get(BOOKLIST_URL)
-jj booklist_root.inject(agent, booklist_page)
+jj root.inject(agent, booklist_page)
