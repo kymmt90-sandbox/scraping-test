@@ -29,9 +29,9 @@ end
 BOOKLIST_NEXT_PAGE_XPATH = '//span[@class="now_page"]/following-sibling::span[1]/a'
 root = Yasuri.pages_root BOOKLIST_NEXT_PAGE_XPATH do
   text_page_index '//span[@class="now_page"]/a'
-  2.upto(25) do |i|
-    eval "text_book_#{i}_name \"//*[@id=\\\"main_left\\\"]/div/div[#{i}]/div[2]/a\""
-    eval "text_book_#{i}_link \"//*[@id=\\\"main_left\\\"]/div/div[#{i}]/div[2]/a/@href\""
+  1.upto(24) do |i|
+    send("text_book_#{i}_name", "//*[@id=\"main_left\"]/div/div[#{i + 1}]/div[2]/a")
+    send("text_book_#{i}_link", "//*[@id=\"main_left\"]/div/div[#{i + 1}]/div[2]/a/@href")
   end
 end
 
