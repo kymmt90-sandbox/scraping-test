@@ -8,13 +8,15 @@ MYPAGE_URL = "#{ROOT_URL}/u/#{USER_ID}"
 BOOKLIST_URL = "#{ROOT_URL}/u/#{USER_ID}/booklist" # 読んだ本
 NUM_BOOKS_PER_PAGE = 40.freeze
 
-if ARGV.size < 2
-  warn 'need mail and password'
+if ARGV.size < 4
+  warn 'parameter: <mail> <password> <year> <month>'
   exit 1
 end
 
 MAIL = ARGV[0]
 PASSWORD = ARGV[1]
+ARG_YEAR = ARGV[2].to_i
+ARG_MONTH = ARGV[3].to_i
 
 agent = Mechanize.new do |a|
   a.user_agent_alias = 'Mac Safari'
@@ -27,9 +29,9 @@ agent.get(LOGIN_URL) do |page|
   end.submit
 end
 
-# 読んだ本リスト 1 ページ目に載っている本 40 冊の名前と URL 取得
+# 読んだ本リストに載っている本の名前と URL 取得
 BOOKLIST_NEXT_PAGE_XPATH = '//span[@class="now_page"]/following-sibling::span[1]/a'.freeze
-booklist_pages_root = Yasuri.pages_root BOOKLIST_NEXT_PAGE_XPATH, limit: 1 do
+booklist_pages_root = Yasuri.pages_root BOOKLIST_NEXT_PAGE_XPATH do
   text_page_index '//span[@class="now_page"]/a'
   1.upto(NUM_BOOKS_PER_PAGE) do |i|
     send("text_book_#{i}_name", "//*[@id=\"main_left\"]/div/div[#{i + 1}]/div[2]/a")
@@ -37,21 +39,65 @@ booklist_pages_root = Yasuri.pages_root BOOKLIST_NEXT_PAGE_XPATH, limit: 1 do
   end
 end
 booklist_first_page = agent.get(BOOKLIST_URL)
-recent_40_books = booklist_pages_root.inject(agent, booklist_first_page)
+all_read_books = booklist_pages_root.inject(agent, booklist_first_page)
 
-# 直近に読んだ 40 冊の本の名前と読了日を取得
-books_names_read_dates = []
-recent_40_books.each do |page|
+# @return [Hash] keys are 'year', 'month' and 'day'
+def get_read_date(agent, book_link)
+  book_page = agent.get(ROOT_URL + book_link)
+  book_date = Yasuri.struct_date '//*[@id="book_edit_area"]/form[1]/div[2]' do
+    text_year  '//*[@id="read_date_y"]/option[1]', truncate: /\d+/, proc: :to_i
+    text_month '//*[@id="read_date_m"]/option[1]', truncate: /\d+/, proc: :to_i
+    text_day   '//*[@id="read_date_d"]/option[1]', truncate: /\d+/, proc: :to_i
+  end
+  book_date.inject(agent, book_page)
+end
+
+# @param [] Mechanize agent
+# @param [Time] target year-month
+# @param [] page where searching for
+# @return [Array]
+def get_target_books(agent, target_ym, page)
+  target_books = []
+
   1.upto(NUM_BOOKS_PER_PAGE) do |i|
-    book_page = agent.get(ROOT_URL + page["book_#{i}_link"])
-    book_page_date = Yasuri.struct_date '//*[@id="book_edit_area"]/form[1]/div[2]' do
-      text_year '//*[@id="read_date_y"]/option[1]', truncate: /\d+/, proc: :to_i
-      text_month '//*[@id="read_date_m"]/option[1]', truncate: /\d+/, proc: :to_i
-      text_day '//*[@id="read_date_d"]/option[1]', truncate: /\d+/, proc: :to_i
-    end
-    book_name_read_date = { 'name' => page["book_#{i}_name"] }
-    read_date = book_page_date.inject(agent, book_page)
-    books_names_read_dates << book_name_read_date.merge(read_date)
+    next if page["book_#{i}_link"].empty?
+
+    read_date = get_read_date(agent, page["book_#{i}_link"])
+    read_ym   = Time.local(read_date['year'], read_date['month'])
+
+    next unless target_ym == read_ym
+    # TODO: 以下の最適化は再読本に対して誤反応するので再読本は再読日を取得
+    # next if target_ym < read_ym
+    # break if target_ym > read_ym
+
+    book_name = { 'name' => page["book_#{i}_name"] }
+    target_books << book_name.merge(read_date)
+  end
+
+  target_books
+end
+
+target_ym = Time.local(ARG_YEAR, ARG_MONTH)
+result = []
+all_read_books.each do |page|
+  puts "Search page #{page['page_index']}..."
+  first_book_date = get_read_date(agent, page['book_1_link'])
+  # TODO: 40 冊に満たないページあり
+  last_book_date  = get_read_date(agent, page['book_40_link'])
+
+  first_book_ym = Time.local(first_book_date['year'].to_i, first_book_date['month'].to_i)
+  last_book_ym  = Time.local(last_book_date['year'].to_i, last_book_date['month'].to_i)
+
+  if target_ym < last_book_ym
+    next
+  elsif target_ym == first_book_ym && target_ym > last_book_ym
+    result.concat(get_target_books(agent, target_ym, page))
+    break
+  elsif target_ym <= first_book_ym && target_ym >= last_book_ym
+    result.concat(get_target_books(agent, target_ym, page))
+  elsif target_ym > first_book_ym
+    break
   end
 end
-jj books_names_read_dates
+
+puts result
