@@ -104,13 +104,20 @@ def get_target_books(agent, target_ym, page)
   target_books
 end
 
+def get_last_book_date(agent, page)
+  NUM_BOOKS_PER_PAGE.downto(1) do |i|
+    link = page["book_#{i}_link"]
+    next if link.empty?
+    return get_read_date(agent, link)
+  end
+end
+
 target_ym = Time.local(ARG_YEAR, ARG_MONTH)
 result = []
 all_read_books.each do |page|
   puts "Search page #{page['page_index']}..."
   first_book_date = get_read_date(agent, page['book_1_link'])
-  # TODO: 40 冊に満たないページあり
-  last_book_date  = get_read_date(agent, page['book_40_link'])
+  last_book_date  = get_last_book_date(agent, page)
 
   first_book_ym = Time.local(first_book_date['year'].to_i, first_book_date['month'].to_i)
   last_book_ym  = Time.local(last_book_date['year'].to_i, last_book_date['month'].to_i)
