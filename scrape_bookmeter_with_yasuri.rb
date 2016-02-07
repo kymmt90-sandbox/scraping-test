@@ -52,6 +52,16 @@ def get_read_date(agent, book_link)
   book_date.inject(agent, book_page)
 end
 
+def get_reread_date(agent, book_link)
+  book_page = agent.get(ROOT_URL + book_link)
+  book_reread_date = Yasuri.struct_reread_date '//*[@id="book_edit_area"]/div/form[1]/div[2]' do
+    text_reread_year  '//div[@class="reread_box"]/form[1]/div[2]/select[1]/option[1]', truncate: /\d+/, proc: :to_i
+    text_reread_month '//div[@class="reread_box"]/form[1]/div[2]/select[2]/option[1]', truncate: /\d+/, proc: :to_i
+    text_reread_day   '//div[@class="reread_box"]/form[1]/div[2]/select[3]/option[1]', truncate: /\d+/, proc: :to_i
+  end
+  book_reread_date.inject(agent, book_page)
+end
+
 # @param [] Mechanize agent
 # @param [Time] target year-month
 # @param [] page where searching for
@@ -62,16 +72,33 @@ def get_target_books(agent, target_ym, page)
   1.upto(NUM_BOOKS_PER_PAGE) do |i|
     next if page["book_#{i}_link"].empty?
 
+    read_yms = []
     read_date = get_read_date(agent, page["book_#{i}_link"])
-    read_ym   = Time.local(read_date['year'], read_date['month'])
+    read_yms << Time.local(read_date['year'], read_date['month'])
 
-    next unless target_ym == read_ym
-    # TODO: 以下の最適化は再読本に対して誤反応するので再読本は再読日を取得
-    # next if target_ym < read_ym
-    # break if target_ym > read_ym
+    reread_date = []
+    reread_date << get_reread_date(agent, page["book_#{i}_link"])
+    reread_date.flatten!
 
-    book_name = { 'name' => page["book_#{i}_name"] }
-    target_books << book_name.merge(read_date)
+    unless reread_date.empty?
+      reread_date.each do |date|
+        read_yms << Time.local(date['reread_year'], date['reread_month'])
+      end
+    end
+
+    next unless read_yms.include?(target_ym)
+
+    book = { 'name' => page["book_#{i}_name"] }
+    book.merge!(read_date)
+    unless reread_date.empty?
+      reread_date.each_with_index do |d, idx|
+        h = { "reread_#{idx + 1}_year"  => d['reread_year'],
+              "reread_#{idx + 1}_month" => d['reread_month'],
+              "reread_#{idx + 1}_day"   => d['reread_day'] }
+        book.merge!(h)
+      end
+    end
+    target_books << book
   end
 
   target_books
@@ -91,6 +118,9 @@ all_read_books.each do |page|
   if target_ym < last_book_ym
     next
   elsif target_ym == first_book_ym && target_ym > last_book_ym
+    result.concat(get_target_books(agent, target_ym, page))
+    break
+  elsif target_ym < first_book_ym && target_ym > last_book_ym
     result.concat(get_target_books(agent, target_ym, page))
     break
   elsif target_ym <= first_book_ym && target_ym >= last_book_ym
