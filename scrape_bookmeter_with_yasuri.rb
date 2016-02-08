@@ -1,5 +1,6 @@
 require 'yasuri'
 require 'json'
+require 'thor'
 
 ROOT_URL   = 'http://bookmeter.com'
 USER_ID    = '104835'
@@ -8,38 +9,32 @@ MYPAGE_URL = "#{ROOT_URL}/u/#{USER_ID}"
 BOOKLIST_URL = "#{ROOT_URL}/u/#{USER_ID}/booklist" # 読んだ本
 NUM_BOOKS_PER_PAGE = 40.freeze
 
-if ARGV.size < 4
-  warn 'parameter: <mail> <password> <year> <month>'
-  exit 1
-end
-
-MAIL = ARGV[0]
-PASSWORD = ARGV[1]
-ARG_YEAR = ARGV[2].to_i
-ARG_MONTH = ARGV[3].to_i
-
-agent = Mechanize.new do |a|
-  a.user_agent_alias = 'Mac Safari'
-end
-
-agent.get(LOGIN_URL) do |page|
-  page.form_with(action: '/login') do |form|
-    form.field_with(name: 'mail').value = MAIL
-    form.field_with(name: 'password').value = PASSWORD
-  end.submit
-end
-
-# 読んだ本リストに載っている本の名前と URL 取得
-BOOKLIST_NEXT_PAGE_XPATH = '//span[@class="now_page"]/following-sibling::span[1]/a'.freeze
-booklist_pages_root = Yasuri.pages_root BOOKLIST_NEXT_PAGE_XPATH do
-  text_page_index '//span[@class="now_page"]/a'
-  1.upto(NUM_BOOKS_PER_PAGE) do |i|
-    send("text_book_#{i}_name", "//*[@id=\"main_left\"]/div/div[#{i + 1}]/div[2]/a")
-    send("text_book_#{i}_link", "//*[@id=\"main_left\"]/div/div[#{i + 1}]/div[2]/a/@href")
+def login(mail, password)
+  agent = Mechanize.new do |a|
+    a.user_agent_alias = 'Mac Safari'
   end
+
+  agent.get(LOGIN_URL) do |page|
+    page.form_with(action: '/login') do |form|
+      form.field_with(name: 'mail').value = mail
+      form.field_with(name: 'password').value = password
+    end.submit
+  end
+
+  agent
 end
-booklist_first_page = agent.get(BOOKLIST_URL)
-all_read_books = booklist_pages_root.inject(agent, booklist_first_page)
+
+def get_all_read_books(agent)
+  booklist_pages_root = Yasuri.pages_root '//span[@class="now_page"]/following-sibling::span[1]/a' do
+    text_page_index '//span[@class="now_page"]/a'
+    1.upto(NUM_BOOKS_PER_PAGE) do |i|
+      send("text_book_#{i}_name", "//*[@id=\"main_left\"]/div/div[#{i + 1}]/div[2]/a")
+      send("text_book_#{i}_link", "//*[@id=\"main_left\"]/div/div[#{i + 1}]/div[2]/a/@href")
+    end
+  end
+  booklist_first_page = agent.get(BOOKLIST_URL)
+  booklist_pages_root.inject(agent, booklist_first_page)
+end
 
 # @return [Hash] keys are 'year', 'month' and 'day'
 def get_read_date(agent, book_link)
@@ -112,29 +107,37 @@ def get_last_book_date(agent, page)
   end
 end
 
-target_ym = Time.local(ARG_YEAR, ARG_MONTH)
-result = []
-all_read_books.each do |page|
-  puts "Search page #{page['page_index']}..."
-  first_book_date = get_read_date(agent, page['book_1_link'])
-  last_book_date  = get_last_book_date(agent, page)
+class BookMeterCLI < Thor
+  desc 'booklist YEAR MONTH', 'Get read books list in YEAR-MONTH'
+  def booklist(mail, password, year, month)
+    agent = login(mail, password)
+    all_read_books = get_all_read_books(agent)
+    target_ym = Time.local(year, month)
+    result = []
+    all_read_books.each do |page|
+      puts "Search page #{page['page_index']}..."
+      first_book_date = get_read_date(agent, page['book_1_link'])
+      last_book_date  = get_last_book_date(agent, page)
 
-  first_book_ym = Time.local(first_book_date['year'].to_i, first_book_date['month'].to_i)
-  last_book_ym  = Time.local(last_book_date['year'].to_i, last_book_date['month'].to_i)
+      first_book_ym = Time.local(first_book_date['year'].to_i, first_book_date['month'].to_i)
+      last_book_ym  = Time.local(last_book_date['year'].to_i, last_book_date['month'].to_i)
 
-  if target_ym < last_book_ym
-    next
-  elsif target_ym == first_book_ym && target_ym > last_book_ym
-    result.concat(get_target_books(agent, target_ym, page))
-    break
-  elsif target_ym < first_book_ym && target_ym > last_book_ym
-    result.concat(get_target_books(agent, target_ym, page))
-    break
-  elsif target_ym <= first_book_ym && target_ym >= last_book_ym
-    result.concat(get_target_books(agent, target_ym, page))
-  elsif target_ym > first_book_ym
-    break
+      if target_ym < last_book_ym
+        next
+      elsif target_ym == first_book_ym && target_ym > last_book_ym
+        result.concat(get_target_books(agent, target_ym, page))
+        break
+      elsif target_ym < first_book_ym && target_ym > last_book_ym
+        result.concat(get_target_books(agent, target_ym, page))
+        break
+      elsif target_ym <= first_book_ym && target_ym >= last_book_ym
+        result.concat(get_target_books(agent, target_ym, page))
+      elsif target_ym > first_book_ym
+        break
+      end
+    end
+    puts result
   end
 end
 
-puts result
+BookMeterCLI.start(ARGV)
